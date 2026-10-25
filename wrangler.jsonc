@@ -13,14 +13,14 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "여기에_D1_이름",
-      "database_id": "여기에_D1_ID"
+      "database_name": "stellcompany",
+      "database_id": "48def5bd-8c42-48e9-ba14-52e6d5e3fe0c"
     }
   ],
 
   // 스텔컴퍼니 사이트 주소 (시작 메뉴 링크용)
   "vars": {
-    "STELL_URL": "https://여기에_스텔컴퍼니_주소"
+    "STELL_URL": "https://virus-stella.yj976400.workers.dev/"
   }
 
   // SESSION_SECRET, DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET 은
