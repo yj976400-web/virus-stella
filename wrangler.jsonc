@@ -10,8 +10,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "여기에_D1_이름",
-      "database_id": "여기에_D1_ID"
+      "database_name": "stellcompany",
+      "database_id": "48def5bd-8c42-48e9-ba14-52e6d5e3fe0c"
     }
   ],
 
