@@ -17,7 +17,7 @@
 
   // 스텔컴퍼니 사이트 주소 (시작 메뉴 링크용)
   "vars": {
-    "STELL_URL": "https://여기에_스텔컴퍼니_주소"
+    "STELL_URL": "https://stellcompany-workers.yj976400.workers.dev/"
   }
 
   // SESSION_SECRET, DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET 은
