@@ -50,8 +50,9 @@ const view=(h,n)=>({trace:Math.round(curTrace(h,n)),lock:h.lock>n?h.lock:0,docs:
 const rpw=()=>{const c="abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%";const u=crypto.getRandomValues(new Uint8Array(9));return[...u].map(x=>c[x%c.length]).join("")};
 
 export default{async fetch(req,env){
- const url=new URL(req.url),ck=cookies(req),id=await unsign(env,ck.sid);
+ const url=new URL(req.url),ck=cookies(req),id=await unsign(env,ck.sid).catch(()=>null);
  try{
+ if(!env.SESSION_SECRET)return new Response("환경변수 SESSION_SECRET 이 설정되지 않았습니다. Cloudflare 대시보드의 Variables and Secrets 를 확인하세요.",{status:500,headers:{"Content-Type":"text/plain; charset=utf-8"}});
  await init(env);
  if(url.pathname==="/auth/logout"){const h=new Headers({Location:"/"});h.append("Set-Cookie","sid=; HttpOnly; Secure; Path=/; SameSite=Lax; Max-Age=0");return new Response(null,{status:302,headers:h})}
  if(url.pathname==="/auth/discord"){const st=crypto.randomUUID();
