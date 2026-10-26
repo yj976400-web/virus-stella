@@ -82,7 +82,14 @@ const view=(h,n)=>({trace:Math.round(curTrace(h,n)),lock:h.lock>n?h.lock:0,docs:
  cd:Object.fromEntries(Object.entries(h.cd).filter(([,v])=>v>n))});
 const rpw=()=>{const c="abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%";const u=crypto.getRandomValues(new Uint8Array(9));return[...u].map(x=>c[x%c.length]).join("")};
 
-export default{async fetch(req,env){
+function dcPost(env,ctx,kind,text){if(!env.DISCORD_BOT_TOKEN||!env.NOTICE_CHANNEL_ID)return;
+ const T={hack:["긴급 해킹 경보",0xc4271a],ceo:["회사 공지",0x1d4f9c],sec:["보안과 소식",0x1d7a55]}[kind]||["공지",0x555555];
+ const p=fetch(API+"/channels/"+env.NOTICE_CHANNEL_ID+"/messages",{method:"POST",headers:{Authorization:"Bot "+env.DISCORD_BOT_TOKEN,"Content-Type":"application/json"},
+  body:JSON.stringify({embeds:[{title:T[0],description:String(text).slice(0,500),color:T[1],timestamp:new Date().toISOString()}],allowed_mentions:{parse:[]}})})
+  .then(async r=>{if(!r.ok)console.log("notice post fail",r.status,await r.text())}).catch(e=>console.log("notice post err",e&&e.message));
+ if(ctx&&ctx.waitUntil)ctx.waitUntil(p)}
+
+export default{async fetch(req,env,ctx){
  const url=new URL(req.url),ck=cookies(req),id=await unsign(env,ck.sid).catch(()=>null);
  try{
  if(!env.SESSION_SECRET)return new Response("환경변수 SESSION_SECRET 이 설정되지 않았습니다. Cloudflare 대시보드의 Variables and Secrets 를 확인하세요.",{status:500,headers:{"Content-Type":"text/plain; charset=utf-8"}});
@@ -113,7 +120,7 @@ export default{async fetch(req,env){
   if(mem.dept!=="none")return json(400,{error:"스텔컴퍼니에 재직 중이라 접속할 수 없습니다. 먼저 퇴사하세요."});
   const shUntil=async()=>{const r=await env.DB.prepare("SELECT until FROM flags WHERE k='shield'").first();return r&&r.until>n?r.until:0};
   const onSec=async()=>(await env.DB.prepare("SELECT COUNT(*) AS c FROM members m JOIN seen s ON s.id=m.id WHERE json_extract(m.data,'$.dept')='sec' AND s.t>?").bind(n-90000).first()).c||0;
-  const ntc=(kind,text)=>env.DB.prepare("INSERT INTO notices (t,kind,text) VALUES (?,?,?)").bind(Date.now(),kind,text);
+  const ntc=(kind,text)=>{dcPost(env,ctx,kind,text);return env.DB.prepare("INSERT INTO notices (t,kind,text) VALUES (?,?,?)").bind(Date.now(),kind,text)};
   const bump=add=>{h.trace=curTrace(h,n)+add;h.tt=n};
   const bust=async(why,kind)=>{h.trace=0;h.tt=n;h.lock=LOCK?n+LOCK:0;h.docs=[];h.att=null;h.cctv=0;h.admin=null;const fine=Math.min(FINE,mem.money||0),sts=[inc(env,id,kind,why)];
    if(fine>0)sts.push(pay(env,id,-fine),led(env,id,"해킹 적발 벌금",-fine));await env.DB.batch(sts);return fine};
@@ -159,7 +166,7 @@ export default{async fetch(req,env){
     case"banner":{const r=H.ports.find(q=>q.p===Number(a1));if(!r)P("그 포트는 닫혀 있습니다.","er");else{h.st.banner++;P(r.p+"/"+r.s+" : "+(r.v?SV[r.s].ok:SV[r.s].no))}break}
     case"exploit":{if(a.user){P("이미 셸을 획득했습니다.","er");break}const sv=TOOL[a1],r=H.ports.find(q=>q.p===Number(a2));
      if(!sv){P("알 수 없는 도구입니다. (anon-login / pw-spray / webshell)","er");break}if(!r){P("그 포트는 닫혀 있습니다.","er");break}
-     if(r.s===sv&&r.v){a.user="guest";a.cwd="/home/guest";h.st.shell++;P("[+] 침투 성공. guest 셸을 획득했습니다.","gr");P("ls 로 둘러보세요.","dm")}
+     if(r.s===sv&&r.v){a.user="guest";a.cwd="/home/guest";h.st.shell++;await inc(env,id,"breach","[침입 진행 중] "+H.name+" · "+D.t).run();P("[+] 침투 성공. guest 셸을 획득했습니다.","gr");P("ls 로 둘러보세요.","dm")}
      else{P(r.s===sv?"[!] 공격이 막혔습니다. 이 서비스에는 해당 약점이 없습니다. 경보 +6%":"[!] 서비스와 맞지 않는 도구입니다. 경보 +6%","er");pen(6)}break}
     case"whoami":if(need())break;P(a.user);break;
     case"pwd":if(need())break;P(a.cwd);break;
@@ -181,6 +188,7 @@ export default{async fetch(req,env){
     case"":break;
     default:P("알 수 없는 명령입니다. help","dm")}
    if(!end&&a.cut)bump(a.cut*.5);
+   if(!end&&h.trace>=60&&!a.alerted){a.alerted=true;await inc(env,id,"alert","의심 접속 시도 · "+H.name+" ("+D.t+")").run()}
    let fine=0;if(end!=="ok"&&end!=="quit"&&h.trace>=100){fine=await bust(D.t,"caught");end="caught";P("[!!] 추적당했습니다! 보유 문서 압수"+(fine?", 벌금 "+fine+"원":"")+".","er")}
    if(end!=="ok")await putHax(env,id,h);
    return json(200,{out:o,end,pr:end?"":(a.user?a.user+"@"+H.name+":"+a.cwd+"$":"["+H.name+"]$"),hax:view(h,n)})}
