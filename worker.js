@@ -154,7 +154,7 @@ export default{async fetch(req,env){
    const denied=p=>p.startsWith("/srv/vault")&&a.user!=="admin",need=()=>{if(!a.user){P("먼저 침투해서 셸을 얻어야 합니다. (exploit)","er");return true}return false};
    let end=null;
    switch(c){
-    case"help":["nmap                    열린 포트 스캔","banner <포트>           서비스 정보 (약점 단서)","exploit <도구> <포트>   침투: anon-login / pw-spray / webshell","ls [폴더] cd <폴더> cat <파일> find <키워드> pwd whoami","ps / kill <이름>        프로세스 확인과 종료","su <계정> <비번>        권한 상승","wipe                    로그 삭제 (추적도 -15%)","download <파일>         문서 반출 (성공 조건)","exit                    연결 종료"].forEach(l=>P(l,"dm"));break;
+    case"help":h.st.help++;["nmap                    열린 포트 스캔","banner <포트>           서비스 정보 (약점 단서)","exploit <도구> <포트>   침투: anon-login / pw-spray / webshell","ls [폴더] cd <폴더> cat <파일> find <키워드> pwd whoami","ps / kill <이름>        프로세스 확인과 종료","su <계정> <비번>        권한 상승","wipe                    로그 삭제 (추적도 -15%)","download <파일>         문서 반출 (성공 조건)","exit                    연결 종료"].forEach(l=>P(l,"dm"));break;
     case"nmap":h.st.nmap++;P("Scanning "+H.ip+" ("+H.name+")");H.ports.forEach(r=>P(r.p+"/tcp  open  "+r.s));P("banner <포트> 로 서비스 정보를 확인하세요.","dm");break;
     case"banner":{const r=H.ports.find(q=>q.p===Number(a1));if(!r)P("그 포트는 닫혀 있습니다.","er");else{h.st.banner++;P(r.p+"/"+r.s+" : "+(r.v?SV[r.s].ok:SV[r.s].no))}break}
     case"exploit":{if(a.user){P("이미 셸을 획득했습니다.","er");break}const sv=TOOL[a1],r=H.ports.find(q=>q.p===Number(a2));
@@ -365,17 +365,17 @@ const mins=t=>Math.max(0,Math.ceil((t-Date.now())/60000));
 async function exec(s){const p=s.trim().split(/\s+/),c=(p[0]||"").toLowerCase(),n=Number(p[1]);out((G?G.pr:"C:\\Stella>")+" "+s);
  if(G){if(c==="clear"){T.innerHTML="";return}await sh(s);return}
  if(!c)return;
- if(c==="help"){api("ev",{k:"help"}).catch(()=>{});["help            명령어 목록","scan            침투 대상 스캔","hack <번호>     대상 서버에 연결해 침투 시작 (연결 후 help)","files           확보한 문서 목록","sell <번호> [1~3]  문서 판매 (1=마담K 2=익명 3=해외)","tools / buy proxy|mod|wipe  도구","cctv            CCTV 관제 화면 (서버 해킹 후)","forge <내용>    위조 전체공지 (관리자 세션)","fire <이름>     직원 퇴직 처리 (관리자 세션)","status          추적도와 잔액","rank            해커 랭킹","mission         튜토리얼 미션 열기/닫기","connect stell-company  내부망 접속","clear           화면 지우기"].forEach(l=>out(l,0,"dm"));return}
+ if(c==="help"){try{await api("ev",{k:"help"})}catch(e){}["help            명령어 목록","scan            침투 대상 스캔","hack <번호>     대상 서버에 연결해 침투 시작 (연결 후 help)","files           확보한 문서 목록","sell <번호> [1~3]  문서 판매 (1=마담K 2=익명 3=해외)","tools / buy proxy|mod|wipe  도구","cctv            CCTV 관제 화면 (서버 해킹 후)","forge <내용>    위조 전체공지 (관리자 세션)","fire <이름>     직원 퇴직 처리 (관리자 세션)","status          추적도와 잔액","rank            해커 랭킹","mission         튜토리얼 미션 열기/닫기","connect stell-company  내부망 접속","clear           화면 지우기"].forEach(l=>out(l,0,"dm"));await refresh();return}
  if(c==="clear"){T.innerHTML="";return}
  if(c==="whoami"){out(S.user.username+(S.member?" / 스텔컴퍼니 "+S.member.name:" / 외부인"));return}
- if(c==="status"){api("ev",{k:"status"}).catch(()=>{});await load();out("추적도 "+S.hax.trace+"%");out("확보 문서 "+S.hax.docs.length+"개 / 개인 자산 "+(S.member?won(S.member.money):"스텔컴퍼니 미가입"));
+ if(c==="status"){try{await api("ev",{k:"status"})}catch(e){}await refresh();out("추적도 "+S.hax.trace+"%");out("확보 문서 "+S.hax.docs.length+"개 / 개인 자산 "+(S.member?won(S.member.money):"스텔컴퍼니 미가입"));
   if(S.hax.cctv)out("CCTV 접근 "+mins(S.hax.cctv)+"분 남음",0,"gr");if(S.hax.admin)out("관리자 세션 "+mins(S.hax.admin.until)+"분 남음 (forge "+S.hax.admin.forge+" / fire "+S.hax.admin.fire+")",0,"gr");
   if(S.shield>Date.now())out("보안막 붕괴 중 ("+mins(S.shield)+"분)",0,"er");return}
  if(c==="connect"){for(const l of ["터널 생성 중...","프록시 3단 경유","핸드셰이크 완료","스텔컴퍼니 내부망 연결됨. scan 으로 대상을 확인하세요."]){out("> "+l,0,"gr");await sleep(350)}return}
  if(c==="scan"){out("> 포트 스캔 중...",0,"dm");try{await api("scan",{})}catch(e){}await sleep(700);await refresh();
   S.docs.forEach(d=>{const cd=(S.hax.cd[d.id]||0)>Date.now(),have=!d.sys&&S.hax.docs.some(x=>x.id===d.id),lock=d.sys==="admin"&&S.shield<Date.now();
    out("["+d.id+"] L"+d.lv+"  "+(d.sys?"[SYS] ":"")+d.t+"  "+(have?"(보유)":cd?"(경계중)":lock?"(보안막 필요)":"(연결 가능)"+(d.sys?SD[d.sys]:"")),0,have||cd||lock?"dm":"")});return}
- if(c==="files"){api("ev",{k:"files"}).catch(()=>{});await load();if(!S.hax.docs.length)out("확보한 문서가 없습니다.",0,"dm");S.hax.docs.forEach(d=>out("["+d.id+"] "+d.t+"  "+won(d.price)));return}
+ if(c==="files"){try{await api("ev",{k:"files"})}catch(e){}await refresh();if(!S.hax.docs.length)out("확보한 문서가 없습니다.",0,"dm");S.hax.docs.forEach(d=>out("["+d.id+"] "+d.t+"  "+won(d.price)));return}
  if(c==="hack"||c==="crack"){if(!n){out("사용법: hack <번호>  (scan으로 번호 확인)",0,"er");return}await run(n,out);return}
  if(c==="sell"){if(!n){out("사용법: sell <번호> [1~3]  (files로 번호 확인)",0,"er");return}await sell(n,(Number(p[2])||1)-1,out);return}
  if(c==="tools"){await load();toolLines().forEach(l=>out(l));return}
