@@ -24,7 +24,7 @@ const ALL=DOCS.concat(SYS);
 const TUT=[
  {t:"단말 열기",r:100,f:h=>h.st.help>=1,d:"VIRUS STELLA는 명령어로 서버를 해킹하는 게임이에요.\ncmd.exe 창 아래 입력칸에 명령어를 치고 Enter를 누르면 돼요.\n칩을 탭하면 입력칸에 자동으로 들어가요.\n먼저 [[help]] 를 입력해서 명령어 목록을 확인해 보세요."},
  {t:"대상 찾기",r:100,f:h=>h.st.scan>=1,d:"해킹은 '정찰 → 침투 → 탐색 → 반출' 순서로 해요.\n먼저 대상을 골라요. [[scan]] 을 입력하면 노릴 수 있는 서버 목록이 나와요.\n[번호], L은 보안 등급(높을수록 어렵고 비싸요)이에요. [SYS]는 회사 시스템 자체를 노리는 특수 대상이에요."},
- {t:"대상에 연결",r:150,f:h=>h.st.start>=1,d:"가장 쉬운 1번 '사내 연락망' 서버로 연습해요.\n[[hack 1]] 을 입력하면 서버에 연결돼요. 입력칸 앞의 표시가 서버 이름으로 바뀌고, 제한 시간은 4분이에요.\n연결 중에는 help 로 쓸 수 있는 명령어를 볼 수 있어요."},
+ {t:"대상에 연결",r:150,f:h=>h.st.start>=1,d:"가장 쉬운 1번 '사내 연락망' 서버로 연습해요.\n[[hack 1]] 을 입력하면 서버에 연결돼요. 입력칸 앞의 표시가 서버 이름으로 바뀌고, 침투에 성공하기 전까지 제한 시간은 4분이고, 셸을 얻으면 없어져요.\n연결 중에는 help 로 쓸 수 있는 명령어를 볼 수 있어요."},
  {t:"1단계 정찰: 포트 스캔",r:150,f:h=>h.st.nmap>=1,d:"서버에는 '포트'라는 문이 있고, 열린 문마다 서비스가 돌아가요.\n[[nmap]] 으로 어떤 문이 열려 있는지 확인하세요.\n21=ftp(파일 전송), 22=ssh(원격 접속), 80=http(웹 관리 화면)처럼 번호와 서비스 이름이 나와요."},
  {t:"약점 찾기: 배너 읽기",r:150,f:h=>h.st.banner>=1,d:"서비스마다 '배너'라는 소개 문구가 있고, 허술한 곳은 약점이 그대로 적혀 있어요.\n열린 포트의 배너를 하나씩 읽어 보세요. 예: [[banner 21]]\n· '익명 접속 허용' → FTP 약점\n· '기본 계정, 비밀번호 정책 없음' → SSH 약점\n· '보안 패치 미적용' → 웹 패널 약점\n최신 패치나 인증 필수라고 적힌 곳은 안전한 곳이에요."},
  {t:"2단계 침투: 약점 공격",r:300,f:h=>h.st.shell>=1,d:"배너에서 찾은 약점에 맞는 도구를 골라 공격해요. 형식: exploit 도구 포트\n· [[exploit anon-login 21]] FTP 익명 접속 약점\n· [[exploit pw-spray 22]] SSH 기본 계정 약점\n· [[exploit webshell 80]] 웹 패널 패치 미적용 약점\n약점이 없는 곳을 공격하면 경보가 울려 추적도가 올라가요. 배너를 읽고 알맞은 한 줄만 입력하세요."},
@@ -134,7 +134,7 @@ export default{async fetch(req,env){
    const sh=await shUntil();if(d.sys==="admin"&&!sh)return json(400,{error:"보안막이 살아 있어 관리자 콘솔에 접근할 수 없습니다. 먼저 보안막을 뚫으세요."});
    const cut=sh?0:Math.min(3,await onSec()),mod=(h.tools.mod||0)>0;if(mod)h.tools.mod--;if(h.att)bump(15);
    const H=mkHost(d);if(sh)H.guard=false;h.att={doc:d.id,at:n,host:H,user:null,cwd:"",cut,sh:!!sh,wiped:false,guardOff:false,free:mod};h.st.start++;await putHax(env,id,h);
-   const out=[["> 대상 연결: "+H.name+" ("+H.ip+") · 보안 L"+d.lv,"dm"],["제한 시간 4분. 먼저 nmap 으로 열린 포트를 확인하세요. (help)","dm"]];
+   const out=[["> 대상 연결: "+H.name+" ("+H.ip+") · 보안 L"+d.lv,"dm"],["침투에 성공하기 전까지 제한 시간 4분 (셸을 얻으면 없어집니다). 먼저 nmap 으로 열린 포트를 확인하세요. (help)","dm"]];
    if(cut)out.push(["보안과 "+cut+"명 접속 중: 명령할 때마다 추적도가 조금씩 올라갑니다.","er"]);if(sh)out.push(["보안막 붕괴 상태: 경보가 약해졌습니다.","gr"]);if(mod)out.push(["실수 보험 적용: 첫 경보 1회 면제","gr"]);
    return json(200,{out,pr:"["+H.name+"]$",t:d.t,lv:d.lv,hax:view(h,n)})}
   if(act==="ev"){const k=String(b.k||"");if(["help","status","files"].includes(k)){h.st[k]++;await putHax(env,id,h)}return json(200,{ok:true})}
@@ -146,7 +146,7 @@ export default{async fetch(req,env){
   if(act==="abort"){if(h.att){h.att=null;bump(15);await putHax(env,id,h)}return json(200,{hax:view(h,n)})}
   if(act==="sh"){const a=h.att;if(!a)return json(400,{error:"진행 중인 침투가 없습니다. hack <번호> 로 연결하세요."});
    const o=[],P=(t,c)=>o.push([t,c||""]),H=a.host,D=ALL.find(x=>x.id===a.doc),px=h.tools.proxy>n;
-   if(n>a.at+240000){h.att=null;bump(15);await putHax(env,id,h);return json(200,{out:[["연결 시간 초과. 세션이 끊겼습니다. 추적도 +15%","er"]],end:"fail",pr:"",hax:view(h,n)})}
+   if(!a.user&&n>a.at+240000){h.att=null;bump(15);await putHax(env,id,h);return json(200,{out:[["연결 시간 초과. 세션이 끊겼습니다. 추적도 +15%","er"]],end:"fail",pr:"",hax:view(h,n)})}
    const ar=String(b.c||"").trim().slice(0,100).split(/\s+/),c=(ar[0]||"").toLowerCase(),a1=ar[1]||"",a2=ar[2]||"";
    const pen=v=>{if(a.free){a.free=false;P("(실수 보험으로 경보를 막았습니다)","gr");return}bump(v*(px?.6:1))};
    const res=p=>{const q=!p||p==="~"?"/home/guest":p[0]==="/"?p:a.cwd+"/"+p,r=[];for(const t of q.split("/")){if(!t||t===".")continue;if(t==="..")r.pop();else r.push(t)}return"/"+r.join("/")};
@@ -374,7 +374,7 @@ async function exec(s){const p=s.trim().split(/\s+/),c=(p[0]||"").toLowerCase(),
  if(c==="connect"){for(const l of ["터널 생성 중...","프록시 3단 경유","핸드셰이크 완료","스텔컴퍼니 내부망 연결됨. scan 으로 대상을 확인하세요."]){out("> "+l,0,"gr");await sleep(350)}return}
  if(c==="scan"){out("> 포트 스캔 중...",0,"dm");try{await api("scan",{})}catch(e){}await sleep(700);await refresh();
   S.docs.forEach(d=>{const cd=(S.hax.cd[d.id]||0)>Date.now(),have=!d.sys&&S.hax.docs.some(x=>x.id===d.id),lock=d.sys==="admin"&&S.shield<Date.now();
-   out("["+d.id+"] L"+d.lv+"  "+(d.sys?"[SYS] ":"")+d.t+"  "+(have?"(보유)":cd?"(경계중)":lock?"(보안막 필요)":"(연결 가능)"),0,have||cd||lock?"dm":"")});return}
+   out("["+d.id+"] L"+d.lv+"  "+(d.sys?"[SYS] ":"")+d.t+"  "+(have?"(보유)":cd?"(경계중)":lock?"(보안막 필요)":"(연결 가능)"+(d.sys?SD[d.sys]:"")),0,have||cd||lock?"dm":"")});return}
  if(c==="files"){api("ev",{k:"files"}).catch(()=>{});await load();if(!S.hax.docs.length)out("확보한 문서가 없습니다.",0,"dm");S.hax.docs.forEach(d=>out("["+d.id+"] "+d.t+"  "+won(d.price)));return}
  if(c==="hack"||c==="crack"){if(!n){out("사용법: hack <번호>  (scan으로 번호 확인)",0,"er");return}await run(n,out);return}
  if(c==="sell"){if(!n){out("사용법: sell <번호> [1~3]  (files로 번호 확인)",0,"er");return}await sell(n,(Number(p[2])||1)-1,out);return}
@@ -385,7 +385,9 @@ async function exec(s){const p=s.trim().split(/\s+/),c=(p[0]||"").toLowerCase(),
  if(c==="cctv"){try{await api("cctv",{});open_("cctv");out("CCTV 관제 화면을 열었습니다.",0,"gr")}catch(e){out(e.message,0,"er")}return}
  if(c==="forge"){const tx=s.trim().slice(5).trim();if(!tx){out("사용법: forge <공지 내용>",0,"er");return}try{await api("forge",{text:tx});out("위조 공지를 전송했습니다.",0,"gr")}catch(e){out(e.message,0,"er")}await refresh();return}
  if(c==="fire"){const tx=s.trim().slice(4).trim();if(!tx){out("사용법: fire <직원 닉네임>",0,"er");return}try{const r=await api("fire",{name:tx});out(r.name+" 님을 퇴직 처리했습니다.",0,"gr")}catch(e){out(e.message,0,"er")}await refresh();return}
+ if(["nmap","banner","exploit","ls","cd","cat","find","pwd","whoami","ps","kill","su","wipe","download","exit","quit"].includes(c)){out("아직 서버에 연결되어 있지 않습니다. scan 으로 번호를 확인하고 hack <번호> 로 먼저 연결하세요. (예: hack 1)",0,"er");return}
  out("'"+p[0]+"' 은(는) 알 수 없는 명령입니다. help 를 입력하세요.",0,"er")}
+const SD={cctv:"  → 성공하면 10분간 cctv 화면",shield:"  → 성공하면 10분간 경보 약화 + 관리자 콘솔 해금",admin:"  → 성공하면 5분간 forge / fire"};
 const TOOLS=[["proxy","프록시 서버","경보로 오르는 추적도 감소, 1시간 (2,000원)"],["mod","실수 보험","다음 침투에서 첫 경보 1회 면제 (1,500원)"],["wipe","로그 삭제기","추적도 -40% (3,000원)"]];
 function toolLines(){const t=S.hax.tools,l=[];l.push("프록시 "+(t.proxy>Date.now()?mins(t.proxy)+"분 남음":"없음")+" / 모듈 "+t.mod+"개");TOOLS.forEach(x=>l.push(x[0]+"  "+x[1]+" - "+x[2]));return l}
 function drawShop(){const f=$("#sl2");f.innerHTML="";if(!S)return;const t=S.hax.tools;
