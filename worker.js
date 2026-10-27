@@ -51,6 +51,7 @@ function mkHost(d){const lv=Math.min(4,d.lv),vs=rnd(["ftp","ssh","http"]),oth=sh
  if(lv>=3){f["/home/guest/.history"]="ls\ncd /srv/docs\nsu admin "+pw+"\nls /srv/vault\nexit";f["/srv/vault/payroll_final_BACKUP.xlsx"]="[HONEYPOT]"}
  f[gp]="[암호화된 문서 데이터]";
  return{name:(d.sys?"sys-":"srv-")+rnd(["hr","fin","ops","cs","st"])+"-0"+(1+Math.floor(Math.random()*9)),ip:"10."+Math.floor(Math.random()*200+10)+"."+Math.floor(Math.random()*250)+"."+Math.floor(Math.random()*250+2),ports,files:f,goal,gp,adm:pw,lv,guard:lv>=4}}
+const corpLoss=(env,v)=>env.DB.prepare("UPDATE corp SET cash=MAX(0,cash-?),loss=loss+? WHERE id=1").bind(v,v);
 const BUY=[{n:"마담 K",x:1,st:0},{n:"익명 구매자",x:1.4,st:.25},{n:"해외 바이어",x:1.8,st:.45}]; // x=가격 배수, st=함정(보안과 위장) 확률
 const CD=15*60000,FINE=30000,LOCK=0; // 문서 재침투 대기, 벌금, 접속 차단(0=없음)
 
@@ -60,7 +61,7 @@ async function init(env){if(ready)return;await env.DB.batch([
  env.DB.prepare("CREATE TABLE IF NOT EXISTS members (id TEXT PRIMARY KEY, data TEXT)"),
  env.DB.prepare("CREATE TABLE IF NOT EXISTS ledger (id TEXT, t INTEGER, kind TEXT, text TEXT, amt INTEGER)"),
  env.DB.prepare("CREATE TABLE IF NOT EXISTS hax (id TEXT PRIMARY KEY, data TEXT)"),
- env.DB.prepare("CREATE TABLE IF NOT EXISTS incidents (t INTEGER, id TEXT, kind TEXT, text TEXT)"),env.DB.prepare("CREATE TABLE IF NOT EXISTS seen (id TEXT PRIMARY KEY, t INTEGER)"),env.DB.prepare("CREATE TABLE IF NOT EXISTS notices (t INTEGER, kind TEXT, text TEXT)"),env.DB.prepare("CREATE TABLE IF NOT EXISTS flags (k TEXT PRIMARY KEY, until INTEGER)")]);ready=true}
+ env.DB.prepare("CREATE TABLE IF NOT EXISTS incidents (t INTEGER, id TEXT, kind TEXT, text TEXT)"),env.DB.prepare("CREATE TABLE IF NOT EXISTS seen (id TEXT PRIMARY KEY, t INTEGER)"),env.DB.prepare("CREATE TABLE IF NOT EXISTS notices (t INTEGER, kind TEXT, text TEXT)"),env.DB.prepare("CREATE TABLE IF NOT EXISTS flags (k TEXT PRIMARY KEY, until INTEGER)"),env.DB.prepare("CREATE TABLE IF NOT EXISTS corp (id INTEGER PRIMARY KEY, cash INTEGER DEFAULT 0, rev INTEGER DEFAULT 0, wage INTEGER DEFAULT 0, loss INTEGER DEFAULT 0, inv INTEGER DEFAULT 0, meta TEXT DEFAULT '{}')"),env.DB.prepare("INSERT OR IGNORE INTO corp (id,meta) VALUES (1,'{}')")]);ready=true}
 
 async function hmac(env,v){const k=await crypto.subtle.importKey("raw",enc.encode(env.SESSION_SECRET),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
  const s=await crypto.subtle.sign("HMAC",k,enc.encode(v));return[...new Uint8Array(s)].map(b=>b.toString(16).padStart(2,"0")).join("")}
@@ -83,7 +84,7 @@ const view=(h,n)=>({trace:Math.round(curTrace(h,n)),lock:h.lock>n?h.lock:0,docs:
 const rpw=()=>{const c="abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%";const u=crypto.getRandomValues(new Uint8Array(9));return[...u].map(x=>c[x%c.length]).join("")};
 
 function dcPost(env,ctx,kind,text){if(!env.DISCORD_BOT_TOKEN||!env.NOTICE_CHANNEL_ID)return;
- const T={hack:["긴급 해킹 경보",0xc4271a],ceo:["회사 공지",0x1d4f9c],sec:["보안과 소식",0x1d7a55]}[kind]||["공지",0x555555];
+ const T={hack:["긴급 해킹 경보",0xc4271a],ceo:["회사 공지",0x1d4f9c],sec:["보안과 소식",0x1d7a55],tax:["세무 알림",0x8a5a14]}[kind]||["공지",0x555555];
  const p=fetch(API+"/channels/"+env.NOTICE_CHANNEL_ID+"/messages",{method:"POST",headers:{Authorization:"Bot "+env.DISCORD_BOT_TOKEN,"Content-Type":"application/json"},
   body:JSON.stringify({embeds:[{title:T[0],description:String(text).slice(0,500),color:T[1],timestamp:new Date().toISOString()}],allowed_mentions:{parse:[]}})})
   .then(async r=>{if(!r.ok)console.log("notice post fail",r.status,await r.text())}).catch(e=>console.log("notice post err",e&&e.message));
@@ -123,16 +124,16 @@ export default{async fetch(req,env,ctx){
   const ntc=(kind,text)=>{dcPost(env,ctx,kind,text);return env.DB.prepare("INSERT INTO notices (t,kind,text) VALUES (?,?,?)").bind(Date.now(),kind,text)};
   const bump=add=>{h.trace=curTrace(h,n)+add;h.tt=n};
   const bust=async(why,kind)=>{h.trace=0;h.tt=n;h.lock=LOCK?n+LOCK:0;h.docs=[];h.att=null;h.cctv=0;h.admin=null;const fine=Math.min(FINE,mem.money||0),sts=[inc(env,id,kind,why)];
-   if(fine>0)sts.push(pay(env,id,-fine),led(env,id,"해킹 적발 벌금",-fine));await env.DB.batch(sts);return fine};
+   if(fine>0)sts.push(pay(env,id,-fine),led(env,id,"해킹 적발 벌금",-fine),env.DB.prepare("UPDATE corp SET cash=cash+?,rev=rev+? WHERE id=1").bind(fine,fine));await env.DB.batch(sts);return fine};
   const mkSec=(c,len)=>{const a=[...(c==="h"?"0123456789ABCDEF":"0123456789")];for(let i=a.length-1;i>0;i--){const j=crypto.getRandomValues(new Uint8Array(1))[0]%(i+1);[a[i],a[j]]=[a[j],a[i]]}return a.slice(0,len).join("")};
   const trs=(L,adj)=>Math.max(3,L.tries+adj);
   const win=async(d,extra)=>{const px=h.tools.proxy>n;bump((px?6:10)+extra);h.att=null;h.hacks++;h.cd[d.id]=n+(d.sys?20*60000:CD);
    if(d.sys){h.st.sys++;if(d.sys==="cctv")h.st.cctv++;if(d.sys==="shield")h.st.shield++}else{h.st.win++;h.st.maxlv=Math.max(h.st.maxlv||0,d.lv)}
    let msg;const sts=[inc(env,id,"breach",d.t)];
-   if(!d.sys){h.docs.push({id:d.id,t:d.t,lv:d.lv,price:d.p[0]+Math.floor(Math.random()*(d.p[1]-d.p[0]+1))});msg="문서 확보: "+d.t}
-   else if(d.sys==="cctv"){h.cctv=n+600000;msg="CCTV 관제 접근 권한 획득 (10분). cctv 를 입력하면 화면이 열립니다.";sts.push(ntc("hack","회사 CCTV 관제 서버가 해킹당했습니다!"))}
-   else if(d.sys==="shield"){sts.push(env.DB.prepare("INSERT OR REPLACE INTO flags (k,until) VALUES ('shield',?)").bind(n+600000),ntc("hack","회사 보안막이 뚫렸습니다! 10분간 모든 시스템이 취약합니다."));msg="보안막 붕괴 (10분). 경보가 약해지고 관리자 콘솔에 접근할 수 있습니다."}
-   else{h.admin={until:n+300000,forge:1,fire:1};msg="관리자 콘솔 접속 성공 (5분). forge <내용> 위조 공지, fire <이름> 직원 퇴직 처리 (각 1회)";sts.push(ntc("hack","회사 관리자 콘솔이 해킹당했습니다!"))}
+   if(!d.sys){const pr=d.p[0]+Math.floor(Math.random()*(d.p[1]-d.p[0]+1));h.docs.push({id:d.id,t:d.t,lv:d.lv,price:pr});sts.push(corpLoss(env,Math.round(pr*.6)));msg="문서 확보: "+d.t}
+   else if(d.sys==="cctv"){sts.push(corpLoss(env,6000));h.cctv=n+600000;msg="CCTV 관제 접근 권한 획득 (10분). cctv 를 입력하면 화면이 열립니다.";sts.push(ntc("hack","회사 CCTV 관제 서버가 해킹당했습니다!"))}
+   else if(d.sys==="shield"){sts.push(corpLoss(env,12000));sts.push(env.DB.prepare("INSERT OR REPLACE INTO flags (k,until) VALUES ('shield',?)").bind(n+600000),ntc("hack","회사 보안막이 뚫렸습니다! 10분간 모든 시스템이 취약합니다."));msg="보안막 붕괴 (10분). 경보가 약해지고 관리자 콘솔에 접근할 수 있습니다."}
+   else{sts.push(corpLoss(env,24000));h.admin={until:n+300000,forge:1,fire:1};msg="관리자 콘솔 접속 성공 (5분). forge <내용> 위조 공지, fire <이름> 직원 퇴직 처리 (각 1회)";sts.push(ntc("hack","회사 관리자 콘솔이 해킹당했습니다!"))}
    await putHax(env,id,h);await env.DB.batch(sts);return msg};
   if(act==="start"){const d=ALL.find(x=>x.id===Number(b.doc));if(!d)return json(400,{error:"없는 대상입니다."});
    if(h.lock>n)return json(400,{error:"접속이 차단되었습니다."});
@@ -140,9 +141,10 @@ export default{async fetch(req,env,ctx){
    if(!d.sys&&h.docs.some(x=>x.id===d.id))return json(400,{error:"이미 확보한 문서입니다. 먼저 판매하세요."});
    const sh=await shUntil();if(d.sys==="admin"&&!sh)return json(400,{error:"보안막이 살아 있어 관리자 콘솔에 접근할 수 없습니다. 먼저 보안막을 뚫으세요."});
    const cut=sh?0:Math.min(3,await onSec()),mod=(h.tools.mod||0)>0;if(mod)h.tools.mod--;if(h.att)bump(15);
-   const H=mkHost(d);if(sh)H.guard=false;h.att={doc:d.id,at:n,host:H,user:null,cwd:"",cut,sh:!!sh,wiped:false,guardOff:false,free:mod};h.st.start++;await putHax(env,id,h);
+   const cr=await env.DB.prepare("SELECT meta FROM corp WHERE id=1").first(),sl=sh?0:(cr?(JSON.parse(cr.meta||"{}").sec||0):0);
+   const H=mkHost(d);if(sl>=5||(sl>=3&&H.lv>=3))H.guard=true;if(sh)H.guard=false;h.att={doc:d.id,at:n,host:H,user:null,cwd:"",cut,sl,sh:!!sh,wiped:false,guardOff:false,free:mod};h.st.start++;await putHax(env,id,h);
    const out=[["> 대상 연결: "+H.name+" ("+H.ip+") · 보안 L"+d.lv,"dm"],["침투에 성공하기 전까지 제한 시간 4분 (셸을 얻으면 없어집니다). 먼저 nmap 으로 열린 포트를 확인하세요. (help)","dm"]];
-   if(cut)out.push(["보안과 "+cut+"명 접속 중: 명령할 때마다 추적도가 조금씩 올라갑니다.","er"]);if(sh)out.push(["보안막 붕괴 상태: 경보가 약해졌습니다.","gr"]);if(mod)out.push(["실수 보험 적용: 첫 경보 1회 면제","gr"]);
+   if(sl)out.push(["회사 보안 시스템 Lv"+sl+" 가동 중: 경보가 더 민감해지고, 높은 등급 서버에는 보안 에이전트가 붙습니다.","er"]);if(cut)out.push(["보안과 "+cut+"명 접속 중: 명령할 때마다 추적도가 조금씩 올라갑니다.","er"]);if(sh)out.push(["보안막 붕괴 상태: 경보가 약해졌습니다.","gr"]);if(mod)out.push(["실수 보험 적용: 첫 경보 1회 면제","gr"]);
    return json(200,{out,pr:"["+H.name+"]$",t:d.t,lv:d.lv,hax:view(h,n)})}
   if(act==="ev"){const k=String(b.k||"");if(["help","status","files"].includes(k)){h.st[k]++;await putHax(env,id,h)}return json(200,{ok:true})}
   if(act==="scan"){h.st.scan++;await putHax(env,id,h);return json(200,{ok:true})}
@@ -155,7 +157,7 @@ export default{async fetch(req,env,ctx){
    const o=[],P=(t,c)=>o.push([t,c||""]),H=a.host,D=ALL.find(x=>x.id===a.doc),px=h.tools.proxy>n;
    if(!a.user&&n>a.at+240000){h.att=null;bump(15);await putHax(env,id,h);return json(200,{out:[["연결 시간 초과. 세션이 끊겼습니다. 추적도 +15%","er"]],end:"fail",pr:"",hax:view(h,n)})}
    const ar=String(b.c||"").trim().slice(0,100).split(/\s+/),c=(ar[0]||"").toLowerCase(),a1=ar[1]||"",a2=ar[2]||"";
-   const pen=v=>{if(a.free){a.free=false;P("(실수 보험으로 경보를 막았습니다)","gr");return}bump(v*(px?.6:1))};
+   const pen=v=>{if(a.free){a.free=false;P("(실수 보험으로 경보를 막았습니다)","gr");return}bump(v*(px?.6:1)*(1+(a.sl||0)*.15))};
    const res=p=>{const q=!p||p==="~"?"/home/guest":p[0]==="/"?p:a.cwd+"/"+p,r=[];for(const t of q.split("/")){if(!t||t===".")continue;if(t==="..")r.pop();else r.push(t)}return"/"+r.join("/")};
    const kids=d=>{const set=new Set(),pre=d==="/"?"/":d+"/";for(const k of Object.keys(H.files))if(k.startsWith(pre)){const r=k.slice(pre.length).split("/");set.add(r.length>1?r[0]+"/":r[0])}return[...set]};
    const denied=p=>p.startsWith("/srv/vault")&&a.user!=="admin",need=()=>{if(!a.user){P("먼저 침투해서 셸을 얻어야 합니다. (exploit)","er");return true}return false};
@@ -187,7 +189,7 @@ export default{async fetch(req,env,ctx){
     case"exit":case"quit":h.att=null;end="quit";P("연결을 종료했습니다.","dm");break;
     case"":break;
     default:P("알 수 없는 명령입니다. help","dm")}
-   if(!end&&a.cut)bump(a.cut*.5);
+   if(!end&&(a.cut||a.sl))bump((a.cut||0)*.5+(a.sl||0)*.3);
    if(!end&&h.trace>=60&&!a.alerted){a.alerted=true;await inc(env,id,"alert","의심 접속 시도 · "+H.name+" ("+D.t+")").run()}
    let fine=0;if(end!=="ok"&&end!=="quit"&&h.trace>=100){fine=await bust(D.t,"caught");end="caught";P("[!!] 추적당했습니다! 보유 문서 압수"+(fine?", 벌금 "+fine+"원":"")+".","er")}
    if(end!=="ok")await putHax(env,id,h);
@@ -421,7 +423,7 @@ T.parentNode.addEventListener("click",()=>{if(innerWidth>700)$("#cin").focus()})
 </script>
 <script>
 (function(){const bar=document.createElement("div");bar.style.cssText="position:fixed;top:0;left:0;right:0;z-index:99999;font:700 13px/1.45 system-ui,sans-serif";document.body.appendChild(bar);
-const hid=new Set(),LB={hack:"[긴급] ",ceo:"[공지] ",sec:"[보안] "},CL={hack:"#c4271a",ceo:"#1d4f9c",sec:"#1d7a55"};
+const hid=new Set(),LB={hack:"[긴급] ",ceo:"[공지] ",sec:"[보안] ",tax:"[세무] "},CL={hack:"#c4271a",ceo:"#1d4f9c",sec:"#1d7a55",tax:"#8a5a14"};
 async function p(){try{const r=await fetch("/api/notice");if(!r.ok)return;const j=await r.json();bar.innerHTML="";
  j.list.filter(x=>!hid.has(x.t)).forEach(x=>{const d=document.createElement("div");d.style.cssText="padding:10px 14px;display:flex;gap:10px;justify-content:space-between;color:#fff;background:"+(CL[x.kind]||"#333");
   const s=document.createElement("span");s.textContent=(LB[x.kind]||"")+x.text;const c=document.createElement("b");c.textContent="×";c.style.cursor="pointer";c.onclick=()=>{hid.add(x.t);d.remove()};d.append(s,c);bar.appendChild(d)})}catch(e){}}
