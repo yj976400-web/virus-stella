@@ -61,7 +61,7 @@ async function init(env){if(ready)return;await env.DB.batch([
  env.DB.prepare("CREATE TABLE IF NOT EXISTS members (id TEXT PRIMARY KEY, data TEXT)"),
  env.DB.prepare("CREATE TABLE IF NOT EXISTS ledger (id TEXT, t INTEGER, kind TEXT, text TEXT, amt INTEGER)"),
  env.DB.prepare("CREATE TABLE IF NOT EXISTS hax (id TEXT PRIMARY KEY, data TEXT)"),
- env.DB.prepare("CREATE TABLE IF NOT EXISTS incidents (t INTEGER, id TEXT, kind TEXT, text TEXT)"),env.DB.prepare("CREATE TABLE IF NOT EXISTS seen (id TEXT PRIMARY KEY, t INTEGER)"),env.DB.prepare("CREATE TABLE IF NOT EXISTS notices (t INTEGER, kind TEXT, text TEXT)"),env.DB.prepare("CREATE TABLE IF NOT EXISTS flags (k TEXT PRIMARY KEY, until INTEGER)"),env.DB.prepare("CREATE TABLE IF NOT EXISTS corp (id INTEGER PRIMARY KEY, cash INTEGER DEFAULT 0, rev INTEGER DEFAULT 0, wage INTEGER DEFAULT 0, loss INTEGER DEFAULT 0, inv INTEGER DEFAULT 0, meta TEXT DEFAULT '{}')"),env.DB.prepare("INSERT OR IGNORE INTO corp (id,meta) VALUES (1,'{}')")]);ready=true}
+ env.DB.prepare("CREATE TABLE IF NOT EXISTS incidents (t INTEGER, id TEXT, kind TEXT, text TEXT)"),env.DB.prepare("CREATE TABLE IF NOT EXISTS seen (id TEXT PRIMARY KEY, t INTEGER)"),env.DB.prepare("CREATE TABLE IF NOT EXISTS notices (t INTEGER, kind TEXT, text TEXT)"),env.DB.prepare("CREATE TABLE IF NOT EXISTS flags (k TEXT PRIMARY KEY, until INTEGER)"),env.DB.prepare("CREATE TABLE IF NOT EXISTS corp (id INTEGER PRIMARY KEY, cash INTEGER DEFAULT 0, rev INTEGER DEFAULT 0, wage INTEGER DEFAULT 0, loss INTEGER DEFAULT 0, inv INTEGER DEFAULT 0, meta TEXT DEFAULT '{}')"),env.DB.prepare("INSERT OR IGNORE INTO corp (id,meta) VALUES (1,'{}')"),env.DB.prepare("CREATE TABLE IF NOT EXISTS patches (id INTEGER PRIMARY KEY, until INTEGER, by TEXT)"),env.DB.prepare("CREATE TABLE IF NOT EXISTS hp (id INTEGER PRIMARY KEY, until INTEGER, by TEXT)")]);ready=true}
 
 async function hmac(env,v){const k=await crypto.subtle.importKey("raw",enc.encode(env.SESSION_SECRET),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
  const s=await crypto.subtle.sign("HMAC",k,enc.encode(v));return[...new Uint8Array(s)].map(b=>b.toString(16).padStart(2,"0")).join("")}
@@ -142,9 +142,11 @@ export default{async fetch(req,env,ctx){
    const sh=await shUntil();if(d.sys==="admin"&&!sh)return json(400,{error:"보안막이 살아 있어 관리자 콘솔에 접근할 수 없습니다. 먼저 보안막을 뚫으세요."});
    const cut=sh?0:Math.min(3,await onSec()),mod=(h.tools.mod||0)>0;if(mod)h.tools.mod--;if(h.att)bump(15);
    const cr=await env.DB.prepare("SELECT meta FROM corp WHERE id=1").first(),sl=sh?0:(cr?(JSON.parse(cr.meta||"{}").sec||0):0);
-   const H=mkHost(d);if(sl>=5||(sl>=3&&H.lv>=3))H.guard=true;if(sh)H.guard=false;h.att={doc:d.id,at:n,host:H,user:null,cwd:"",cut,sl,sh:!!sh,wiped:false,guardOff:false,free:mod};h.st.start++;await putHax(env,id,h);
+   const H=mkHost(d);if(sl>=5||(sl>=3&&H.lv>=3))H.guard=true;const ptr=await env.DB.prepare("SELECT until FROM patches WHERE id=?").bind(d.id).first(),hpr=await env.DB.prepare("SELECT until,by FROM hp WHERE id=?").bind(d.id).first(),hard=!sh&&!!ptr&&ptr.until>n;
+   if(hard)H.guard=true;if(sh)H.guard=false;if(hpr&&hpr.until>n){const bp=(H.lv<=1?"/home/guest/":"/srv/docs/")+"salary_backup_final.xlsx";H.files[bp]="[HONEYPOT]";H.hpBy=hpr.by;H.hpPath=bp}h.kicked=0;
+   h.att={doc:d.id,at:n,host:H,user:null,cwd:"",cut,sl,hard,sh:!!sh,wiped:false,guardOff:false,free:mod};h.st.start++;await putHax(env,id,h);
    const out=[["> 대상 연결: "+H.name+" ("+H.ip+") · 보안 L"+d.lv,"dm"],["침투에 성공하기 전까지 제한 시간 4분 (셸을 얻으면 없어집니다). 먼저 nmap 으로 열린 포트를 확인하세요. (help)","dm"]];
-   if(sl)out.push(["회사 보안 시스템 Lv"+sl+" 가동 중: 경보가 더 민감해지고, 높은 등급 서버에는 보안 에이전트가 붙습니다.","er"]);if(cut)out.push(["보안과 "+cut+"명 접속 중: 명령할 때마다 추적도가 조금씩 올라갑니다.","er"]);if(sh)out.push(["보안막 붕괴 상태: 경보가 약해졌습니다.","gr"]);if(mod)out.push(["실수 보험 적용: 첫 경보 1회 면제","gr"]);
+   if(hard)out.push(["이 서버는 보안과가 최근 패치했습니다: 경보가 두 배로 민감하고 보안 에이전트가 있습니다. (침투 전 제한 시간 2분)","er"]);if(sl)out.push(["회사 보안 시스템 Lv"+sl+" 가동 중: 경보가 더 민감해지고, 높은 등급 서버에는 보안 에이전트가 붙습니다.","er"]);if(cut)out.push(["보안과 "+cut+"명 접속 중: 명령할 때마다 추적도가 조금씩 올라갑니다.","er"]);if(sh)out.push(["보안막 붕괴 상태: 경보가 약해졌습니다.","gr"]);if(mod)out.push(["실수 보험 적용: 첫 경보 1회 면제","gr"]);
    return json(200,{out,pr:"["+H.name+"]$",t:d.t,lv:d.lv,hax:view(h,n)})}
   if(act==="ev"){const k=String(b.k||"");if(["help","status","files"].includes(k)){h.st[k]++;await putHax(env,id,h)}return json(200,{ok:true})}
   if(act==="scan"){h.st.scan++;await putHax(env,id,h);return json(200,{ok:true})}
@@ -153,11 +155,12 @@ export default{async fetch(req,env,ctx){
   if(act==="rank"){const rs=(await env.DB.prepare("SELECT x.data AS data,u.username AS un FROM hax x LEFT JOIN users u ON u.id=x.id").all()).results||[];
    const list=rs.map(r=>{const o=JSON.parse(r.data);return{n:r.un||"익명",earn:o.earn||0,sold:o.sold||0}}).filter(x=>x.earn>0).sort((a,b)=>b.earn-a.earn).slice(0,10);return json(200,{list})}
   if(act==="abort"){if(h.att){h.att=null;bump(15);await putHax(env,id,h)}return json(200,{hax:view(h,n)})}
-  if(act==="sh"){const a=h.att;if(!a)return json(400,{error:"진행 중인 침투가 없습니다. hack <번호> 로 연결하세요."});
+  if(act==="sh"){const a=h.att;if(!a){if(h.kicked&&n-h.kicked<300000){h.kicked=0;await putHax(env,id,h);return json(200,{out:[["[!] 보안과가 이 연결을 강제로 종료했습니다. 추적도 +15%","er"]],end:"fail",pr:"",hax:view(h,n)})}return json(400,{error:"진행 중인 침투가 없습니다. hack <번호> 로 연결하세요."})}
    const o=[],P=(t,c)=>o.push([t,c||""]),H=a.host,D=ALL.find(x=>x.id===a.doc),px=h.tools.proxy>n;
-   if(!a.user&&n>a.at+240000){h.att=null;bump(15);await putHax(env,id,h);return json(200,{out:[["연결 시간 초과. 세션이 끊겼습니다. 추적도 +15%","er"]],end:"fail",pr:"",hax:view(h,n)})}
-   const ar=String(b.c||"").trim().slice(0,100).split(/\s+/),c=(ar[0]||"").toLowerCase(),a1=ar[1]||"",a2=ar[2]||"";
-   const pen=v=>{if(a.free){a.free=false;P("(실수 보험으로 경보를 막았습니다)","gr");return}bump(v*(px?.6:1)*(1+(a.sl||0)*.15))};
+   if(!a.user&&n>a.at+(a.hard?120000:240000)){h.att=null;bump(15);await putHax(env,id,h);return json(200,{out:[["연결 시간 초과. 세션이 끊겼습니다. 추적도 +15%","er"]],end:"fail",pr:"",hax:view(h,n)})}
+   const raw=String(b.c||"").trim().slice(0,100),ar=raw.split(/\s+/),c=(ar[0]||"").toLowerCase(),a1=ar[1]||"",a2=ar[2]||"";
+   a.last=n;if(raw)a.log=(a.log||[]).concat([[n,raw]]).slice(-12);if(a.watch&&n-a.watch<90000)P("[!] 이 세션을 누군가 지켜보고 있는 것 같습니다. (ps 로 확인)","er");
+   const pen=v=>{if(a.free){a.free=false;P("(실수 보험으로 경보를 막았습니다)","gr");return}bump(v*(px?.6:1)*(1+(a.sl||0)*.15)*(a.hard?2:1))};
    const res=p=>{const q=!p||p==="~"?"/home/guest":p[0]==="/"?p:a.cwd+"/"+p,r=[];for(const t of q.split("/")){if(!t||t===".")continue;if(t==="..")r.pop();else r.push(t)}return"/"+r.join("/")};
    const kids=d=>{const set=new Set(),pre=d==="/"?"/":d+"/";for(const k of Object.keys(H.files))if(k.startsWith(pre)){const r=k.slice(pre.length).split("/");set.add(r.length>1?r[0]+"/":r[0])}return[...set]};
    const denied=p=>p.startsWith("/srv/vault")&&a.user!=="admin",need=()=>{if(!a.user){P("먼저 침투해서 셸을 얻어야 합니다. (exploit)","er");return true}return false};
@@ -176,20 +179,20 @@ export default{async fetch(req,env,ctx){
     case"cd":{if(need())break;const d=res(a1||"~");if(denied(d)){P("접근 거부: 권한이 필요합니다.","er");break}if(!kids(d).length){P("그런 폴더가 없습니다.","er");break}a.cwd=d;break}
     case"cat":{if(need())break;const p=res(a1);if(denied(p)){P("접근 거부","er");break}const t=H.files[p];if(t===undefined)P("그런 파일이 없습니다.","er");else{h.st.cat++;t.split("\n").forEach(l=>P(l))}break}
     case"find":{if(need())break;const kw=a1.toLowerCase();if(!kw){P("사용법: find <키워드>","er");break}const r=Object.keys(H.files).filter(p=>p.toLowerCase().includes(kw)&&!denied(p));if(!r.length)P("결과 없음","dm");else r.forEach(p=>P(p));break}
-    case"ps":if(need())break;P("PID  NAME");P("101  sshd");P("233  stellweb");if(H.guard&&!a.guardOff)P("417  stellguard   (보안 에이전트)","er");break;
+    case"ps":if(need())break;P("PID  NAME");P("101  sshd");P("233  stellweb");if(a.watch&&n-a.watch<90000)P("598  secmon       (보안과 열람 중)","er");if(H.guard&&!a.guardOff)P("417  stellguard   (보안 에이전트)","er");break;
     case"kill":{if(need())break;if(a1==="stellguard"&&H.guard&&!a.guardOff){a.guardOff=true;h.st.kill++;P("[+] stellguard 종료. 전송 차단이 해제되었습니다.","gr")}else P("그런 프로세스가 없습니다.","er");break}
     case"su":{if(need())break;if(H.lv<3){P("이 서버에서는 권한 상승이 필요 없습니다.","dm");break}if(a1==="admin"&&a2===H.adm){a.user="admin";h.st.su++;P("[+] admin 권한을 획득했습니다.","gr")}else{P("[!] 인증 실패. 경보 +8%","er");pen(8)}break}
     case"wipe":{if(need())break;if(H.lv>=3&&a.user!=="admin"){P("권한이 부족해 로그를 지울 수 없습니다. (su)","er");break}if(a.wiped){P("이미 정리했습니다.","dm");break}a.wiped=true;h.trace=Math.max(0,curTrace(h,n)-15);h.tt=n;h.st.wipe++;P("[+] /var/log 정리 완료. 추적도 -15%","gr");break}
     case"download":{if(need())break;const p=Object.keys(H.files).find(q=>a1.includes("/")?q===res(a1):q.split("/").pop()===a1);
      if(!p||denied(p)){P("그런 파일이 없거나 권한이 없습니다.","er");break}
-     if(H.files[p]==="[HONEYPOT]"){delete H.files[p];P("[!] 허니팟이었습니다! 보안 시스템이 반응했습니다. 경보 +40%","er");bump(40);break}
+     if(H.files[p]==="[HONEYPOT]"){delete H.files[p];P("[!] 허니팟이었습니다! 보안 시스템이 반응했습니다. 경보 +40%","er");bump(40);if(H.hpBy&&p===H.hpPath)await env.DB.batch([pay(env,H.hpBy,800),led(env,H.hpBy,"허니팟 작동 보상",800),inc(env,id,"alert","허니팟 작동 · "+H.name+" 에서 미끼 파일 반출 시도")]);break}
      if(p!==H.gp){P("[~] 내려받았지만 쓸모없는 파일입니다. 경보 +3%","dm");bump(3);break}
      if(H.guard&&!a.guardOff){P("[!] stellguard 가 전송을 차단했습니다. 경보 +35% (ps, kill 로 먼저 종료하세요)","er");bump(35);break}
      const extra=a.wiped?0:10,msg=await win(D,extra);P("[+] 반출 완료: "+H.goal,"gr");P(msg,"gr");if(!a.wiped)P("로그를 지우지 않아 흔적이 남았습니다. 추적도 +10%","er");end="ok";break}
     case"exit":case"quit":h.att=null;end="quit";P("연결을 종료했습니다.","dm");break;
     case"":break;
     default:P("알 수 없는 명령입니다. help","dm")}
-   if(!end&&(a.cut||a.sl))bump((a.cut||0)*.5+(a.sl||0)*.3);
+   if(!end&&(a.cut||a.sl))bump(((a.cut||0)*.5+(a.sl||0)*.3)*(a.hard?2:1));
    if(!end&&h.trace>=60&&!a.alerted){a.alerted=true;await inc(env,id,"alert","의심 접속 시도 · "+H.name+" ("+D.t+")").run()}
    let fine=0;if(end!=="ok"&&end!=="quit"&&h.trace>=100){fine=await bust(D.t,"caught");end="caught";P("[!!] 추적당했습니다! 보유 문서 압수"+(fine?", 벌금 "+fine+"원":"")+".","er")}
    if(end!=="ok")await putHax(env,id,h);
